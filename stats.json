@@ -1,0 +1,20 @@
+{
+    "123456789": {
+        "mute_issued": 1,
+        "mute_removed": 0,
+        "ban_issued": 1,
+        "ban_removed": 0,
+        "warn_issued": 0,
+        "warn_removed": 0,
+        "roles_issued": 0
+    },
+    "1388805492612141126": {
+        "mute_issued": 0,
+        "mute_removed": 0,
+        "ban_issued": 0,
+        "ban_removed": 0,
+        "warn_issued": 0,
+        "warn_removed": 0,
+        "roles_issued": 3
+    }
+}

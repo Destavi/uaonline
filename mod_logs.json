@@ -1,0 +1,51 @@
+{
+    "123456789": [
+        {
+            "type": "ban",
+            "admin_id": 987654321,
+            "admin_name": "AdminTest",
+            "target_id": 111222333,
+            "target_name": "TargetTest",
+            "timestamp": "2026-01-12T18:53:59.152581",
+            "reason": "Test reason"
+        },
+        {
+            "type": "mute",
+            "admin_id": 987654321,
+            "admin_name": "AdminTest",
+            "target_id": 111222333,
+            "target_name": "TargetTest",
+            "timestamp": "2026-01-12T18:53:59.154382",
+            "reason": "Test reason"
+        }
+    ],
+    "1388805492612141126": [
+        {
+            "type": "role_issued",
+            "admin_id": 1397138348623138837,
+            "admin_name": "[СЗМ]⟁̶⌬𝙫𝙇𝙖𝙙_𝙭𝙁𝘼𝙏𝘼𝙇⌬",
+            "target_id": 1424139608077107341,
+            "target_name": "[1 | МОЗ Л] Artem_Lisiy",
+            "timestamp": "2026-01-16T14:34:45.281322",
+            "reason": "Роль: Лікарня Львів"
+        },
+        {
+            "type": "role_issued",
+            "admin_id": 1397138348623138837,
+            "admin_name": "[СЗМ]⟁̶⌬𝙫𝙇𝙖𝙙_𝙭𝙁𝘼𝙏𝘼𝙇⌬",
+            "target_id": 1460373941838413826,
+            "target_name": "[2 | ТЦК] Yurii_Renkas",
+            "timestamp": "2026-01-16T14:34:50.016022",
+            "reason": "Роль: ТЦК"
+        },
+        {
+            "type": "role_issued",
+            "admin_id": 1393203619930701834,
+            "admin_name": "[ГІМ | М/DS]Masha_Berty",
+            "target_id": 1430196164074147932,
+            "target_name": "[1 | МОЗ Д] Stas Zgurskij",
+            "timestamp": "2026-01-16T16:33:31.160426",
+            "reason": "Роль: Лікарня Дніпро"
+        }
+    ]
+}
