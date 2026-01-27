@@ -11,52 +11,28 @@ from services.stats_manager import update_stat, get_stats, load_logs, log_mod_ac
 from services.moderation_logger import send_mod_log
 from services.database import get_conn
 
-# --- Функції для збереження даних у PostgreSQL (замість JSON) ---
-
-def load_warnings(guild_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, reason, admin_name, timestamp FROM warnings WHERE guild_id = %s", (str(guild_id),))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    data = {}
-    for r in rows:
-        u_id = str(r[0])
-        if u_id not in data: data[u_id] = []
-        data[u_id].append({"reason": r[1], "admin": r[2], "timestamp": r[3].isoformat()})
-    return data
-
-def save_warnings(guild_id, user_id, reason, admin_name):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO warnings (guild_id, user_id, reason, admin_name, timestamp) 
-        VALUES (%s, %s, %s, %s, %s)
-    """, (str(guild_id), user_id, reason, admin_name, datetime.now()))
-    conn.commit()
-    cur.close()
-    conn.close()
+# --- Функції для Тимчасових Банів та Варнів у PostgreSQL ---
 
 def save_temp_ban(guild_id, user_id, unban_time):
-    conn = get_conn()
-    cur = conn.cursor()
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS temp_bans (
+            guild_id TEXT,
+            user_id BIGINT,
+            unban_time TIMESTAMP,
+            PRIMARY KEY (guild_id, user_id)
+        )
+    """)
     cur.execute("""
         INSERT INTO temp_bans (guild_id, user_id, unban_time) VALUES (%s, %s, %s)
         ON CONFLICT (guild_id, user_id) DO UPDATE SET unban_time = EXCLUDED.unban_time
     """, (str(guild_id), user_id, unban_time))
-    conn.commit()
-    cur.close()
-    conn.close()
+    conn.commit(); cur.close(); conn.close()
 
 def remove_temp_ban(guild_id, user_id):
-    conn = get_conn()
-    cur = conn.cursor()
+    conn = get_conn(); cur = conn.cursor()
     cur.execute("DELETE FROM temp_bans WHERE guild_id = %s AND user_id = %s", (str(guild_id), user_id))
-    conn.commit()
-    cur.close()
-    conn.close()
+    conn.commit(); cur.close(); conn.close()
 
 class Moderation(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -115,7 +91,7 @@ class Moderation(commands.Cog):
     async def mute(self, interaction: discord.Interaction, member: discord.Member, duration: str, reason: str = "Не вказана"):
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
         if any(role.name == "Куратор Держ." for role in member.roles):
-            return await interaction.response.send_message("❌ Неможливо видати мут користувачу з роллю **Куратор Держ.**", ephemeral=True)
+            return await interaction.response.send_message("❌ Неможливо видати таймаут користувачу з роллю **Куратор Держ.**", ephemeral=True)
         
         delta = self.parse_duration(duration)
         if not delta: return await interaction.response.send_message("❌ Невірний формат часу. Використовуйте: 10м, 1г, 1д.", ephemeral=True)
@@ -143,19 +119,20 @@ class Moderation(commands.Cog):
             return await interaction.response.send_message("❌ Неможливо видати варн Куратору Держ.", ephemeral=True)
         
         await interaction.response.defer()
-        save_warnings(interaction.guild.id, member.id, reason, interaction.user.display_name)
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("INSERT INTO warnings (guild_id, user_id, reason, admin_name, timestamp) VALUES (%s, %s, %s, %s, %s)", (str(interaction.guild.id), member.id, reason, interaction.user.display_name, datetime.now()))
+        conn.commit()
+        cur.execute("SELECT COUNT(*) FROM warnings WHERE guild_id = %s AND user_id = %s", (str(interaction.guild.id), member.id))
+        count = cur.fetchone()[0]; cur.close(); conn.close()
+
         log_mod_action(interaction.guild.id, "warn", interaction.user, member, reason)
         update_stat(interaction.guild.id, "warn_issued")
         
-        # Отримуємо кількість варнів для Embed
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM warnings WHERE user_id = %s", (member.id,))
-        count = cur.fetchone()[0]; cur.close(); conn.close()
-
         embed = discord.Embed(title="⚠️ Попередження (Варн)", color=discord.Color.yellow())
         embed.add_field(name="Користувач", value=f"{member.mention}")
         embed.add_field(name="Причина", value=reason)
         embed.add_field(name="Кількість варнів", value=str(count))
+        embed.add_field(name="Адміністратор", value=interaction.user.mention)
         embed.timestamp = datetime.now()
         await interaction.followup.send(embed=embed)
         await send_mod_log(self.bot, interaction.guild, "Warn", interaction.user, member, reason, f"Варн #{count}")
@@ -168,8 +145,8 @@ class Moderation(commands.Cog):
             await interaction.guild.unban(user, reason=f"{reason} | Адмін: {interaction.user.display_name}")
             update_stat(interaction.guild.id, "ban_removed")
             remove_temp_ban(interaction.guild.id, user_id)
-            await interaction.response.send_message(f"✅ Користувача {user.name} успішно розбанено.")
-        except Exception as e: await interaction.response.send_message(f"❌ Помилка: {e}", ephemeral=True)
+            await interaction.response.send_message(f"✅ Користувача {user.name} ({user_id}) успішно розбанено.")
+        except Exception as e: await interaction.response.send_message(f"❌ Не вдалося розбанити: {e}", ephemeral=True)
 
     @app_commands.command(name="unmute", description="Зняти таймаут (мут)")
     async def unmute(self, interaction: discord.Interaction, member: discord.Member):
@@ -177,49 +154,71 @@ class Moderation(commands.Cog):
         try:
             await member.timeout(None, reason=f"Знято: {interaction.user.display_name}")
             update_stat(interaction.guild.id, "mute_removed")
-            await interaction.response.send_message(f"✅ Таймаут для {member.mention} знято.")
-        except Exception as e: await interaction.response.send_message(f"❌ Помилка: {e}", ephemeral=True)
+            await interaction.response.send_message(f"✅ Таймаут для {member.mention} успішно знято.")
+        except Exception as e: await interaction.response.send_message(f"❌ Не вдалося зняти таймаут: {e}", ephemeral=True)
 
-    @app_commands.command(name="unwarn", description="Видалити варн")
-    async def unwarn(self, interaction: discord.Interaction, member: discord.Member, warn_id: int):
+    @app_commands.command(name="unwarn", description="Видалити останній варн користувача")
+    async def unwarn(self, interaction: discord.Interaction, member: discord.Member):
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
         conn = get_conn(); cur = conn.cursor()
-        cur.execute("DELETE FROM warnings WHERE id = %s AND user_id = %s", (warn_id, member.id))
+        cur.execute("DELETE FROM warnings WHERE id = (SELECT id FROM warnings WHERE guild_id = %s AND user_id = %s ORDER BY timestamp DESC LIMIT 1)", (str(interaction.guild.id), member.id))
         conn.commit(); cur.close(); conn.close()
         update_stat(interaction.guild.id, "warn_removed")
-        await interaction.response.send_message(f"✅ Варн #{warn_id} для {member.mention} видалено.")
+        await interaction.response.send_message(f"✅ Останнє попередження для {member.mention} видалено.")
 
-    @app_commands.command(name="warnings", description="Список варнів")
+    @app_commands.command(name="warnings", description="Переглянути список попереджень")
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
-        data = load_warnings(interaction.guild.id)
-        user_id = str(member.id)
-        if user_id not in data: return await interaction.response.send_message("ℹ️ Варнів немає.", ephemeral=True)
-        
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT admin_name, reason, timestamp FROM warnings WHERE guild_id = %s AND user_id = %s", (str(interaction.guild.id), member.id))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        if not rows: return await interaction.response.send_message(f"ℹ️ У {member.display_name} немає варнів.", ephemeral=True)
         embed = discord.Embed(title=f"📋 Варни: {member.display_name}", color=discord.Color.blue())
-        for w in data[user_id]:
-            embed.add_field(name=f"Адмін: {w['admin']}", value=f"Причина: {w['reason']}", inline=False)
+        for r in rows:
+            embed.add_field(name=f"Адмін: {r[0]} | {r[2].strftime('%d.%m %H:%M')}", value=r[1], inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="stats", description="Особиста статистика")
+    @app_commands.command(name="stats", description="Ваша статистика модерації")
+    @app_commands.choices(period=[app_commands.Choice(name="За добу", value="day"), app_commands.Choice(name="За тиждень", value="week"), app_commands.Choice(name="За місяць", value="month")])
     async def stats(self, interaction: discord.Interaction, period: str):
+        await interaction.response.defer(ephemeral=True)
         logs = load_logs(interaction.guild.id)
-        # Логіка фільтрації за часом (day/week/month)
-        await interaction.response.send_message(f"📊 Статистика {period} для {interaction.user.display_name} завантажується...", ephemeral=True)
+        now = datetime.now()
+        delta = timedelta(days=1) if period == "day" else (timedelta(weeks=1) if period == "week" else timedelta(days=30))
+        counts = {"ban": 0, "mute": 0, "warn": 0, "role_issued": 0, "role_removed": 0}
+        for a in logs:
+            if int(a["admin_id"]) == interaction.user.id and datetime.fromisoformat(a["timestamp"]) > (now - delta):
+                if a["type"] in counts: counts[a["type"]] += 1
+        embed = discord.Embed(title=f"📊 Ваша статистика: {interaction.user.display_name}", color=discord.Color.green())
+        embed.add_field(name="🔨 Бани", value=str(counts["ban"]), inline=True)
+        embed.add_field(name="🔇 Мути", value=str(counts["mute"]), inline=True)
+        embed.add_field(name="⚠️ Варни", value=str(counts["warn"]), inline=True)
+        await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="view_stats", description="Статистика іншого модератора")
-    async def view_stats(self, interaction: discord.Interaction, moderator: discord.Member, period: str):
+    async def view_stats(self, interaction: discord.Interaction, moderator: discord.Member, period: str = "week"):
         if not await self.check_mod_permissions(interaction, BAN_ROLES): return
-        await interaction.response.send_message(f"📊 Статистика модератора {moderator.display_name} готується...", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        logs = load_logs(interaction.guild.id)
+        counts = {"ban": 0, "mute": 0, "warn": 0}
+        for a in logs:
+            if int(a["admin_id"]) == moderator.id:
+                if a["type"] in counts: counts[a["type"]] += 1
+        embed = discord.Embed(title=f"📊 Статистика: {moderator.display_name}", color=discord.Color.blue())
+        embed.add_field(name="🔨 Бани", value=str(counts["ban"]))
+        embed.add_field(name="🔇 Мути", value=str(counts["mute"]))
+        await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="mod_stats_global", description="Глобальна статистика")
+    @app_commands.command(name="mod_stats_global", description="Загальна статистика сервера")
     async def global_stats(self, interaction: discord.Interaction):
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
+        await interaction.response.defer(ephemeral=True)
         stats = get_stats(interaction.guild.id)
-        embed = discord.Embed(title="📊 Загальна статистика", color=discord.Color.gold())
-        embed.add_field(name="Бани", value=str(stats.get('ban_issued', 0)))
-        embed.add_field(name="Мути", value=str(stats.get('mute_issued', 0)))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed = discord.Embed(title=f"📊 Загальна статистика: {interaction.guild.name}", color=discord.Color.gold())
+        embed.add_field(name="🔨 Бани (всього)", value=str(stats.get('ban_issued', 0)), inline=True)
+        embed.add_field(name="🔇 Мути (всього)", value=str(stats.get('mute_issued', 0)), inline=True)
+        embed.add_field(name="⚠️ Варни (всього)", value=str(stats.get('warn_issued', 0)), inline=True)
+        await interaction.followup.send(embed=embed)
 
     @tasks.loop(minutes=5)
     async def check_bans(self):
@@ -236,6 +235,9 @@ class Moderation(commands.Cog):
                         remove_temp_ban(g_id, u_id)
                     except: pass
         cur.close(); conn.close()
+
+    @check_bans.before_loop
+    async def before_check_bans(self): await self.bot.wait_until_ready()
 
 async def setup(bot: commands.Bot):
     cog = Moderation(bot)
