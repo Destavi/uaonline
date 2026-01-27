@@ -10,9 +10,12 @@ from services.database import get_conn
 # --- Функції бази даних (PostgreSQL) ---
 
 def get_complaint_data(guild_id):
-    conn = get_conn(); cur = conn.cursor()
+    conn = get_conn()
+    cur = conn.cursor()
     cur.execute("SELECT db_key, status, author_id, author_nick, category, local_id, timestamp FROM complaints WHERE guild_id = %s", (str(guild_id),))
-    rows = cur.fetchall(); cur.close(); conn.close()
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
     complaints = {}
     for r in rows:
         complaints[r[0]] = {"status": r[1], "author": r[2], "author_nick": r[3], "category": r[4], "local_id": r[5], "timestamp": r[6]}
@@ -48,6 +51,7 @@ class ComplaintPanel(commands.Cog):
         self.bot = bot
         self.active_uploads = {}
         
+        # Реєстрація контекстних меню
         self.ctx_menu_player = app_commands.ContextMenu(name="⚠️ Скарга на гравця", callback=self.ctx_report_player)
         self.ctx_menu_leader = app_commands.ContextMenu(name="⭐ Скарга на Лідера", callback=self.ctx_report_leader)
         self.ctx_menu_gov = app_commands.ContextMenu(name="🏛 Скарга на Держ.", callback=self.ctx_report_gov)
@@ -106,9 +110,15 @@ class ComplaintPanel(commands.Cog):
         else:
             await interaction.response.send_modal(ComplaintModal(self.bot, cfg["channel_id"], cfg.get("modal_title"), category_key, g_config.get("allowed_roles"), default_nickname=member.display_name))
 
-    async def ctx_report_player(self, i, m): await self.generic_report_handler(i, m, "players")
-    async def ctx_report_leader(self, i, m): await self.generic_report_handler(i, m, "leaders")
-    async def ctx_report_gov(self, i, m): await self.generic_report_handler(i, m, "gov")
+    # ТУТ ТВОЇ ВИПРАВЛЕНІ КОМАНДИ (Додано : discord.Member)
+    async def ctx_report_player(self, interaction: discord.Interaction, member: discord.Member):
+        await self.generic_report_handler(interaction, member, "players")
+
+    async def ctx_report_leader(self, interaction: discord.Interaction, member: discord.Member):
+        await self.generic_report_handler(interaction, member, "leaders")
+
+    async def ctx_report_gov(self, interaction: discord.Interaction, member: discord.Member):
+        await self.generic_report_handler(interaction, member, "gov")
 
 # --- Класи інтерфейсу ---
 
