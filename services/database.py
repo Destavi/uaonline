@@ -4,13 +4,13 @@ from datetime import datetime
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-def get_connection():
+# Ми змінили назву з get_connection на get_conn
+def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
 def init_db():
-    conn = get_connection()
+    conn = get_conn()
     cur = conn.cursor()
-    # Створюємо таблицю для скарг
     cur.execute('''
         CREATE TABLE IF NOT EXISTS complaints (
             id SERIAL PRIMARY KEY,
@@ -21,7 +21,6 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Створюємо таблицю для статистики модерації
     cur.execute('''
         CREATE TABLE IF NOT EXISTS mod_stats (
             moderator_id BIGINT PRIMARY KEY,
@@ -34,3 +33,7 @@ def init_db():
     cur.close()
     conn.close()
     print("🐘 [PostgreSQL] База даних ініціалізована!")
+    cur.close()
+    conn.close()
+    print("🐘 [PostgreSQL] База даних ініціалізована!")
+
