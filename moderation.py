@@ -58,14 +58,14 @@ class Moderation(commands.Cog):
         amount, unit = match.groups()
         return timedelta(**{units[unit]: int(amount)})
 
-    @app_commands.command(name="ban", description="Забанити користувача (можна на певний термін)")
+    # --- Команди покарань ---
+
+    @app_commands.command(name="ban", description="Забанити користувача")
     async def ban(self, interaction: discord.Interaction, member: discord.Member, duration: str = None, reason: str = "Не вказана"):
         if not await self.check_mod_permissions(interaction, BAN_ROLES): return
         if any(role.name == "Куратор Держ." for role in member.roles):
-            return await interaction.response.send_message("❌ Неможливо забанити користувача з роллю Куратор Держ.", ephemeral=True)
-        if member.top_role >= interaction.user.top_role and not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Ви не можете забанити користувача з рівною або вищою роллю.", ephemeral=True)
-
+            return await interaction.response.send_message("❌ Неможливо забанити Куратора Держ.", ephemeral=True)
+        
         await interaction.response.defer()
         delta = self.parse_duration(duration) if duration else None
         unban_time = datetime.now() + delta if delta else None
@@ -77,10 +77,9 @@ class Moderation(commands.Cog):
             update_stat(interaction.guild.id, "ban_issued")
             
             embed = discord.Embed(title="🔨 Бан", color=discord.Color.red())
-            embed.add_field(name="Користувач", value=f"{member.mention} ({member.id})")
+            embed.add_field(name="Користувач", value=f"{member.mention}")
             embed.add_field(name="Термін", value=duration or "Назавжди")
             embed.add_field(name="Причина", value=reason)
-            embed.timestamp = datetime.now()
             await interaction.followup.send(embed=embed)
             await send_mod_log(self.bot, interaction.guild, "Ban", interaction.user, member, reason, f"Термін: {duration or 'Назавжди'}")
             if unban_time: save_temp_ban(interaction.guild.id, member.id, unban_time)
@@ -94,7 +93,7 @@ class Moderation(commands.Cog):
         
         delta = self.parse_duration(duration)
         if not delta: return await interaction.response.send_message("❌ Невірний формат часу.", ephemeral=True)
-
+        
         await interaction.response.defer()
         try:
             await member.timeout(delta, reason=f"{reason} | Адмін: {interaction.user.display_name}")
@@ -104,7 +103,6 @@ class Moderation(commands.Cog):
             embed = discord.Embed(title="🔇 Мут", color=discord.Color.orange())
             embed.add_field(name="Користувач", value=member.mention)
             embed.add_field(name="Тривалість", value=duration)
-            embed.timestamp = datetime.now()
             await interaction.followup.send(embed=embed)
             await send_mod_log(self.bot, interaction.guild, "Mute", interaction.user, member, reason, f"Тривалість: {duration}")
         except Exception as e: await interaction.followup.send(f"❌ Помилка: {e}")
@@ -129,8 +127,11 @@ class Moderation(commands.Cog):
         embed = discord.Embed(title="⚠️ Попередження", color=discord.Color.yellow())
         embed.add_field(name="Користувач", value=member.mention)
         embed.add_field(name="Всього варнів", value=str(count))
+        embed.add_field(name="Причина", value=reason)
         await interaction.followup.send(embed=embed)
         await send_mod_log(self.bot, interaction.guild, "Warn", interaction.user, member, reason, f"Варн #{count}")
+
+    # --- Зняття покарань ---
 
     @app_commands.command(name="unban", description="Розбанити")
     async def unban(self, interaction: discord.Interaction, user_id: str, reason: str = "Не вказана"):
@@ -152,39 +153,72 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(f"✅ Мут з {member.mention} знято.")
         except Exception as e: await interaction.response.send_message(f"❌ Помилка: {e}")
 
-    @app_commands.command(name="stats", description="Ваша статистика модерації")
-    @app_commands.choices(period=[
-        app_commands.Choice(name="День", value="day"),
-        app_commands.Choice(name="Тиждень", value="week"),
-        app_commands.Choice(name="Місяць", value="month")
-    ])
+    @app_commands.command(name="unwarn", description="Видалити останній варн")
+    async def unwarn(self, interaction: discord.Interaction, member: discord.Member):
+        if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("DELETE FROM warnings WHERE id = (SELECT id FROM warnings WHERE guild_id = %s AND user_id = %s ORDER BY timestamp DESC LIMIT 1)", (str(interaction.guild.id), member.id))
+        conn.commit(); cur.close(); conn.close()
+        update_stat(interaction.guild.id, "warn_removed")
+        await interaction.response.send_message(f"✅ Останній варн з {member.mention} видалено.")
+
+    @app_commands.command(name="warnings", description="Список варнів")
+    async def warnings(self, interaction: discord.Interaction, member: discord.Member):
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT admin_name, reason, timestamp FROM warnings WHERE guild_id = %s AND user_id = %s", (str(interaction.guild.id), member.id))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        if not rows: return await interaction.response.send_message("ℹ️ Варнів немає.", ephemeral=True)
+        embed = discord.Embed(title=f"📋 Варни: {member.display_name}", color=discord.Color.blue())
+        for r in rows:
+            embed.add_field(name=f"Адмін: {r[0]} | {r[2].strftime('%d.%m %H:%M')}", value=r[1], inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # --- СТАТИСТИКА ---
+
+    @app_commands.command(name="stats", description="Ваша статистика")
+    @app_commands.choices(period=[app_commands.Choice(name="День", value="day"), app_commands.Choice(name="Тиждень", value="week"), app_commands.Choice(name="Місяць", value="month")])
     async def stats(self, interaction: discord.Interaction, period: str):
         await interaction.response.defer(ephemeral=True)
         logs = load_logs(interaction.guild.id)
         now = datetime.now()
         delta = timedelta(days=1) if period == "day" else (timedelta(weeks=1) if period == "week" else timedelta(days=30))
-        
         counts = {"ban": 0, "mute": 0, "warn": 0, "role_issued": 0, "role_removed": 0}
         for a in logs:
-            action_time = datetime.fromisoformat(a["timestamp"])
-            if int(a["admin_id"]) == interaction.user.id and action_time > (now - delta):
-                a_type = a["type"]
-                if a_type in counts: counts[a_type] += 1
-        
+            if int(a["admin_id"]) == interaction.user.id and datetime.fromisoformat(a["timestamp"]) > (now - delta):
+                if a["type"] in counts: counts[a["type"]] += 1
         embed = discord.Embed(title=f"📊 Статистика: {interaction.user.display_name}", color=discord.Color.green())
-        embed.add_field(name="🔨 Бани", value=str(counts["ban"]), inline=True)
-        embed.add_field(name="🔇 Мути", value=str(counts["mute"]), inline=True)
-        embed.add_field(name="⚠️ Варни", value=str(counts["warn"]), inline=True)
-        embed.add_field(name="🎭 Ролі (видано/знято)", value=f"{counts['role_issued']} / {counts['role_removed']}", inline=False)
+        embed.add_field(name="🔨 Бани", value=counts["ban"], inline=True)
+        embed.add_field(name="🔇 Мути", value=counts["mute"], inline=True)
+        embed.add_field(name="🎭 Ролі (+/-)", value=f"{counts['role_issued']} / {counts['role_removed']}", inline=True)
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="mod_stats_global", description="Глобальна статистика")
+    @app_commands.command(name="view_stats", description="Статистика іншого модератора")
+    @app_commands.describe(moderator="Модератор", period="Період")
+    @app_commands.choices(period=[app_commands.Choice(name="День", value="day"), app_commands.Choice(name="Тиждень", value="week"), app_commands.Choice(name="Місяць", value="month")])
+    async def view_stats(self, interaction: discord.Interaction, moderator: discord.Member, period: str):
+        if not await self.check_mod_permissions(interaction, BAN_ROLES): return
+        await interaction.response.defer(ephemeral=True)
+        logs = load_logs(interaction.guild.id)
+        now = datetime.now()
+        delta = timedelta(days=1) if period == "day" else (timedelta(weeks=1) if period == "week" else timedelta(days=30))
+        counts = {"ban": 0, "mute": 0, "warn": 0, "role_issued": 0, "role_removed": 0}
+        for a in logs:
+            if int(a["admin_id"]) == moderator.id and datetime.fromisoformat(a["timestamp"]) > (now - delta):
+                if a["type"] in counts: counts[a["type"]] += 1
+        embed = discord.Embed(title=f"📊 Статистика: {moderator.display_name}", color=discord.Color.blue())
+        embed.add_field(name="🔨 Бани", value=counts["ban"], inline=True)
+        embed.add_field(name="🔇 Мути", value=counts["mute"], inline=True)
+        embed.add_field(name="🎭 Ролі (+/-)", value=f"{counts['role_issued']} / {counts['role_removed']}", inline=True)
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="mod_stats_global", description="Глобальна статистика сервера")
     async def global_stats(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         stats = get_stats(interaction.guild.id)
         embed = discord.Embed(title="📊 Статистика сервера", color=discord.Color.gold())
-        embed.add_field(name="Бани (всього)", value=str(stats.get('ban_issued', 0)), inline=True)
-        embed.add_field(name="Мути (всього)", value=str(stats.get('mute_issued', 0)), inline=True)
+        embed.add_field(name="🔨 Бани", value=stats.get('ban_issued', 0), inline=True)
+        embed.add_field(name="🔇 Мути", value=stats.get('mute_issued', 0), inline=True)
+        embed.add_field(name="⚠️ Варни", value=stats.get('warn_issued', 0), inline=True)
         await interaction.followup.send(embed=embed)
 
     @tasks.loop(minutes=5)
