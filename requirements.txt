@@ -1,4 +1,4 @@
 discord.py>=2.3.2
 python-dotenv
 flask
-aiohttp
+psycopg2-binary
