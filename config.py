@@ -15,21 +15,29 @@ def get_db_conn():
     return psycopg2.connect(DATABASE_URL)
 
 def load_all_guilds_config():
+    # Спочатку спробуємо отримати з бази
     try:
         conn = get_db_conn()
         cur = conn.cursor()
         cur.execute("SELECT guild_id, config FROM guild_configs")
         rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return {str(r[0]): r[1] for r in rows}
-    except Exception as e:
-        print(f"❌ Error loading settings from DB: {e}")
-        # Fallback to local file if DB fails
-        if os.path.exists(GUILDS_CONFIG_PATH):
+        cur.close(); conn.close()
+        if rows:
+            return {str(r[0]): r[1] for r in rows}
+    except:
+        pass
+
+    # Якщо в базі порожньо, беремо з файлу і зберігаємо в базу (авто-міграція)
+    if os.path.exists(GUILDS_CONFIG_PATH):
+        try:
             with open(GUILDS_CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+                data = json.load(f)
+                for gid, cfg in data.items():
+                    save_guild_config(gid, cfg)
+                return data
+        except:
+            return {}
+    return {}
 
 def get_guild_config(guild_id):
     try:
@@ -37,34 +45,26 @@ def get_guild_config(guild_id):
         cur = conn.cursor()
         cur.execute("SELECT config FROM guild_configs WHERE guild_id = %s", (int(guild_id),))
         row = cur.fetchone()
-        cur.close()
-        conn.close()
-        if row:
-            return row[0]
-    except Exception as e:
-        print(f"❌ Error loading guild config from DB: {e}")
+        cur.close(); conn.close()
+        if row: return row[0]
+    except:
+        pass
     
-    # Fallback logic
-    configs = load_all_guilds_config()
-    return configs.get(str(guild_id), None)
+    # Якщо в базі немає, шукаємо у файлі
+    all_cfg = load_all_guilds_config()
+    return all_cfg.get(str(guild_id))
 
 def save_guild_config(guild_id, config):
-    """Зберегти конфігурацію гільдії в БД"""
     try:
-        conn = get_db_conn()
-        cur = conn.cursor()
+        conn = get_db_conn(); cur = conn.cursor()
         cur.execute("""
             INSERT INTO guild_configs (guild_id, config, updated_at)
             VALUES (%s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (guild_id) DO UPDATE SET config = EXCLUDED.config, updated_at = CURRENT_TIMESTAMP
         """, (int(guild_id), json.dumps(config)))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return True
+        conn.commit(); cur.close(); conn.close()
     except Exception as e:
-        print(f"❌ Error saving config to DB: {e}")
-        return False
+        print(f"❌ Помилка збереження конфігу: {e}")
 
 # Google Sheets Config
 GOOGLE_CREDS_PATH = "google_creds.json"
