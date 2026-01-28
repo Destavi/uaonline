@@ -292,6 +292,23 @@ def build_complaint_embed(cid, nick, reason, proof, author, sub_nick, db_key):
     e.timestamp = datetime.now()
     return e
 
-async def ctx_report_player(i, m): await ComplaintPanel(None).generic_report_handler(i, m, "players")
-async def ctx_report_leader(i, m): await ComplaintPanel(None).generic_report_handler(i, m, "leaders")
-async def ctx_report_gov(i, m): await ComplaintPanel(None).generic_report_handler(i, m, "gov")
+async def ctx_report_player(interaction: discord.Interaction, member: discord.Member):
+    cog = interaction.client.get_cog("ComplaintPanel")
+    if cog:
+        await cog.generic_report_handler(interaction, member, "players")
+    else:
+        await interaction.response.send_message("❌ Система скарг не активна.", ephemeral=True)
+
+async def ctx_report_leader(interaction: discord.Interaction, member: discord.Member):
+    cog = interaction.client.get_cog("ComplaintPanel")
+    if cog:
+        await cog.generic_report_handler(interaction, member, "leaders")
+    else:
+        await interaction.response.send_message("❌ Система скарг не активна.", ephemeral=True)
+
+async def ctx_report_gov(interaction: discord.Interaction, member: discord.Member):
+    cog = interaction.client.get_cog("ComplaintPanel")
+    if cog:
+        await cog.generic_report_handler(interaction, member, "gov")
+    else:
+        await interaction.response.send_message("❌ Система скарг не активна.", ephemeral=True)
