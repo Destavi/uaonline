@@ -7,42 +7,30 @@ from applications_publisher import AppPublisher
 from config import TOKEN
 from services.database import init_db
 import asyncio
-from flask import Flask
-from threading import Thread
-import os
-
-# --- КЕЕР ALIVE СЕРВЕР ДЛЯ RENDER ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "✅ Бот UA Online 05 працює!"
-
-def run():
-    # Render використовує порт 8080 або динамічний PORT з оточення
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
-# ------------------------------------
 
 # Ініціалізація бази даних
-init_db()
+# Тимчасово включаємо повне очищення для "чистого старту"
+from reset_db import reset as reset_db
+try:
+    reset_db()
+except Exception as e:
+    print(f"⚠️ Reset skip/error: {e}")
 
+init_db()
 # Створюємо бота
+# Ми НЕ використовуємо Intents.all(), щоб не вимагати Presence Intent (статус онлайн)
 intents = discord.Intents.default()
-intents.members = True          
-intents.message_content = True  
+intents.members = True          # Потрібно для видачі ролей
+intents.message_content = True  # Потрібно для доказів (фото/відео)
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# -----------------------------
+# Подія готовності
 @bot.event
 async def on_ready():
     print("====================================")
     print(f"✅ Бот ЗАПУЩЕНИЙ як {bot.user}")
-    print(f"🚀 Версія: 1.1.0 (Render Keep-Alive)")
+    print(f"🚀 Версія: 1.0.1 (Stats Fix Applied)")
     print("====================================")
     try:
         await bot.tree.sync()
@@ -50,6 +38,8 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Помилка синхронізації slash-команд: {e}")
 
+# -----------------------------
+# Підключаємо модулі
 async def setup():
     print("🔍 [DEBUG] Loading Cogs...")
     await bot.add_cog(ComplaintPanel(bot))
@@ -58,10 +48,9 @@ async def setup():
     await bot.add_cog(AppPublisher(bot))
     print("✅ [DEBUG] All Cogs loaded.")
 
+# -----------------------------
+# Запуск
 async def main():
-    # Запускаємо веб-сервер, щоб Render не присипляв бота
-    keep_alive() 
-    
     async with bot:
         await setup()
         await bot.start(TOKEN)
