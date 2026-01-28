@@ -1,29 +1,25 @@
 import psycopg2
 import os
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 def get_conn():
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL environment variable is not set")
+    DATABASE_URL = os.getenv("DATABASE_URL")
     return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
-    
-    # Скарги (Complaints) - Розширена структура для збереження функціоналу
+
+    # 1. Скарги (Complaints)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS complaints (
             id SERIAL PRIMARY KEY,
             guild_id BIGINT,
             category TEXT,
             local_id INTEGER,
-            user_id BIGINT, -- Author ID
+            user_id BIGINT,
             author_nick TEXT,
             target_name TEXT,
             reason TEXT,
@@ -32,34 +28,8 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
-    # Статистика модераторів
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS mod_stats (
-            moderator_id BIGINT PRIMARY KEY,
-            warnings_count INTEGER DEFAULT 0,
-            bans_count INTEGER DEFAULT 0,
-            mutes_count INTEGER DEFAULT 0,
-            reports_handled INTEGER DEFAULT 0
-        )
-    ''')
-    
-    # Логи модерації (для персональної статистики та аудиту)
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS mod_actions (
-            id SERIAL PRIMARY KEY,
-            guild_id BIGINT,
-            action_type TEXT,
-            admin_id BIGINT,
-            admin_name TEXT,
-            target_id TEXT,
-            target_name TEXT,
-            reason TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
 
-    # Лічильники скарг
+    # 2. Лічильники скарг
     cur.execute('''
         CREATE TABLE IF NOT EXISTS complaint_counters (
             guild_id BIGINT,
@@ -69,17 +39,42 @@ def init_db():
         )
     ''')
 
-    # Глобальна статистика сервера
+    # 3. Статистика модераторів
     cur.execute('''
-        CREATE TABLE IF NOT EXISTS server_stats (
+        CREATE TABLE IF NOT EXISTS mod_stats (
             guild_id BIGINT,
-            stat_key TEXT,
-            value INTEGER DEFAULT 0,
-            PRIMARY KEY (guild_id, stat_key)
+            user_id BIGINT,
+            action_type TEXT,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, user_id, action_type)
         )
     ''')
 
-    # Попередження (Warnings)
+    # 4. Логи дій модераторів
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS mod_actions (
+            id SERIAL PRIMARY KEY,
+            guild_id BIGINT,
+            admin_id BIGINT,
+            admin_name TEXT,
+            target_id BIGINT,
+            target_name TEXT,
+            action_type TEXT,
+            reason TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 5. Статистика сервера
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS server_stats (
+            guild_id BIGINT PRIMARY KEY,
+            total_cases INTEGER DEFAULT 0,
+            last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 6. Варни (Warnings)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS warnings (
             id SERIAL PRIMARY KEY,
@@ -92,7 +87,7 @@ def init_db():
         )
     ''')
 
-    # Тимчасові бани (Temp Bans)
+    # 7. Тимчасові бани (Temp Bans)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS temp_bans (
             guild_id BIGINT,
@@ -102,7 +97,7 @@ def init_db():
         )
     ''')
 
-    # Конфігурація серверів (Guild Configs)
+    # 8. Налаштування серверів (Guild Configs)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS guild_configs (
             guild_id BIGINT PRIMARY KEY,
@@ -114,4 +109,4 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
-    print("🐘 [PostgreSQL] База даних ініціалізована!")
+    print("🐘 [PostgreSQL] База даних успішно ініціалізована!")
