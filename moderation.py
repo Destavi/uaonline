@@ -7,7 +7,7 @@ import re
 import asyncio
 from datetime import datetime, timedelta
 from config import get_guild_config, DEFAULT_ALLOWED_ROLES, MUTE_ROLES, BAN_ROLES, UNBAN_ROLES
-from services.stats_manager import update_stat_v2, get_stats, load_logs, log_mod_action
+from services.stats_manager import update_stat, get_stats, load_logs, log_mod_action
 from services.moderation_logger import send_mod_log
 from services.moderation_manager import (
     add_warning, get_warnings, delete_warning, 
@@ -88,7 +88,7 @@ class Moderation(commands.Cog):
             
             # Логуємо перед відправкою (Data first)
             log_mod_action(interaction.guild.id, "ban", interaction.user, member, f"{duration if duration else 'perm'}: {reason}")
-            update_stat_v2(interaction.guild.id, "ban_issued", interaction.user.id)
+            update_stat(interaction.guild.id, "ban_issued", interaction.user.id)
             
             await interaction.followup.send(embed=embed)
             
@@ -143,7 +143,7 @@ class Moderation(commands.Cog):
                 raise e_log
 
             try:
-                update_stat_v2(interaction.guild.id, "mute_issued", interaction.user.id)
+                update_stat(interaction.guild.id, "mute_issued", interaction.user.id)
                 print(f"DEBUG: [STEP 3.2] update_stat success")
             except Exception as e_stat:
                 print(f"DEBUG: [STEP 3.2 ERROR] update_stat failed: {e_stat}")
@@ -184,7 +184,7 @@ class Moderation(commands.Cog):
         
         # Логуємо перед відправкою
         log_mod_action(interaction.guild.id, "warn", interaction.user, member, reason)
-        update_stat_v2(interaction.guild.id, "warn_issued", interaction.user.id)
+        update_stat(interaction.guild.id, "warn_issued", interaction.user.id)
         
         await interaction.followup.send(embed=embed)
         
@@ -201,7 +201,7 @@ class Moderation(commands.Cog):
         try:
             user = await self.bot.fetch_user(user_id)
             await interaction.guild.unban(user, reason=f"{reason} | Адмін: {interaction.user.display_name}")
-            update_stat_v2(interaction.guild.id, "ban_removed", interaction.user.id)
+            update_stat(interaction.guild.id, "ban_removed", interaction.user.id)
             await send_mod_log(self.bot, interaction.guild, "Unban", interaction.user, user, reason)
             await interaction.response.send_message(f"✅ Користувача {user.name} ({user_id}) успішно розбанено. Причина: {reason}")
         except Exception as e:
@@ -214,7 +214,7 @@ class Moderation(commands.Cog):
         
         try:
             await member.timeout(None, reason=f"Знято адміном: {interaction.user.display_name}")
-            update_stat_v2(interaction.guild.id, "mute_removed", interaction.user.id)
+            update_stat(interaction.guild.id, "mute_removed", interaction.user.id)
             await send_mod_log(self.bot, interaction.guild, "Unmute", interaction.user, member, "Знято адміністратором")
             await interaction.response.send_message(f"✅ Таймаут для {member.mention} успішно знято.")
         except Exception as e:
@@ -231,7 +231,7 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(f"❌ Варн #{warn_id} не знайдено.", ephemeral=True)
             return
             
-        update_stat_v2(interaction.guild.id, "warn_removed", interaction.user.id)
+        update_stat(interaction.guild.id, "warn_removed", interaction.user.id)
         await send_mod_log(self.bot, interaction.guild, "Unwarn", interaction.user, member, f"Видалено варн #{warn_id}")
         await interaction.response.send_message(f"✅ Попередження #{warn_id} для {member.mention} видалено.")
 
