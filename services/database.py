@@ -65,12 +65,13 @@ def init_db():
         )
     ''')
 
-    # 5. Статистика сервера
+    # 5. Статистика сервера (Global)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS server_stats (
-            guild_id BIGINT PRIMARY KEY,
-            total_cases INTEGER DEFAULT 0,
-            last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            guild_id BIGINT,
+            stat_key TEXT,
+            value INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, stat_key)
         )
     ''')
 
