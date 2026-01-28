@@ -5,33 +5,10 @@ from moderation import Moderation
 from roles import RoleRequest
 from applications_publisher import AppPublisher
 from config import TOKEN
-from services.database import init_db, get_conn
+from services.database import init_db
 import asyncio
 
-# --- ТИМЧАСОВИЙ БЛОК ОЧИЩЕННЯ БАЗИ ---
-def drop_all_tables():
-    print("⚠️ [RESET] Починаю очищення бази...")
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        tables = [
-            "complaints", "complaint_counters", "mod_stats", 
-            "mod_actions", "server_stats", "warnings", 
-            "temp_bans", "guild_configs"
-        ]
-        for table in tables:
-            cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
-        conn.commit()
-        cur.close(); conn.close()
-        print("✅ [RESET] База очищена.")
-    except Exception as e:
-        print(f"❌ [RESET] Помилка: {e}")
-
-# Запустити очищення (один раз)
-drop_all_tables()
-# ---------------------------------------
-
-# Ініціалізація бази даних (створення нових таблиць)
+# Ініціалізація бази даних
 init_db()
 
 intents = discord.Intents.default()
