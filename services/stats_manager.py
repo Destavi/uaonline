@@ -3,7 +3,8 @@ from datetime import datetime
 
 print(f"📊 [StatsManager] Initialized with PostgreSQL backend")
 
-def update_stat(guild_id, action_type, moderator_id=None):
+def update_stat_v2(guild_id, action_type, moderator_id=None):
+    print(f"DEBUG: update_stat called with ({guild_id}, {action_type}, {moderator_id})")
     """
     Updates both global server stats and per-moderator stats.
     action_type: e.g. 'ban_issued', 'mute_issued', 'warn_issued', etc.
