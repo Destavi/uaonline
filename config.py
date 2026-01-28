@@ -9,15 +9,62 @@ DEFAULT_GUILD_ID = os.getenv("GUILD_ID")
 
 GUILDS_CONFIG_PATH = "guilds_config.json"
 
+def get_db_conn():
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    import psycopg2
+    return psycopg2.connect(DATABASE_URL)
+
 def load_all_guilds_config():
-    if not os.path.exists(GUILDS_CONFIG_PATH):
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT guild_id, config FROM guild_configs")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return {str(r[0]): r[1] for r in rows}
+    except Exception as e:
+        print(f"❌ Error loading settings from DB: {e}")
+        # Fallback to local file if DB fails
+        if os.path.exists(GUILDS_CONFIG_PATH):
+            with open(GUILDS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
         return {}
-    with open(GUILDS_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 def get_guild_config(guild_id):
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT config FROM guild_configs WHERE guild_id = %s", (int(guild_id),))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            return row[0]
+    except Exception as e:
+        print(f"❌ Error loading guild config from DB: {e}")
+    
+    # Fallback logic
     configs = load_all_guilds_config()
     return configs.get(str(guild_id), None)
+
+def save_guild_config(guild_id, config):
+    """Зберегти конфігурацію гільдії в БД"""
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO guild_configs (guild_id, config, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (guild_id) DO UPDATE SET config = EXCLUDED.config, updated_at = CURRENT_TIMESTAMP
+        """, (int(guild_id), json.dumps(config)))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Error saving config to DB: {e}")
+        return False
 
 # Google Sheets Config
 GOOGLE_CREDS_PATH = "google_creds.json"
