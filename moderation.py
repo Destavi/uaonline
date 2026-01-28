@@ -173,7 +173,7 @@ class Moderation(commands.Cog):
             return
         
         await interaction.response.defer()
-        warn_count = add_warning(guild_id, member.id, reason, interaction.user.display_name)
+        warn_count = add_warning(interaction.guild.id, member.id, reason, interaction.user.display_name)
         
         embed = discord.Embed(title="⚠️ Попередження (Варн)", color=discord.Color.yellow())
         embed.add_field(name="Користувач", value=f"{member.mention}")
@@ -183,8 +183,8 @@ class Moderation(commands.Cog):
         embed.timestamp = datetime.now()
         
         # Логуємо перед відправкою
-        log_mod_action(guild_id, "warn", interaction.user, member, reason)
-        update_stat(guild_id, "warn_issued", interaction.user.id)
+        log_mod_action(interaction.guild.id, "warn", interaction.user, member, reason)
+        update_stat(interaction.guild.id, "warn_issued", interaction.user.id)
         
         await interaction.followup.send(embed=embed)
         
