@@ -66,6 +66,11 @@ def init_db():
     ''')
 
     # 5. Статистика сервера (Global)
+    # Перевіряємо чи стара структура таблиці (без stat_key)
+    cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='server_stats' AND column_name='stat_key'")
+    if cur.fetchone()[0] == 0:
+        cur.execute("DROP TABLE IF EXISTS server_stats")
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS server_stats (
             guild_id BIGINT,
