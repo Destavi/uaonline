@@ -212,13 +212,14 @@ class Moderation(commands.Cog):
     async def unmute(self, interaction: discord.Interaction, member: discord.Member):
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
         
+        await interaction.response.defer()
         try:
             await member.timeout(None, reason=f"Знято адміном: {interaction.user.display_name}")
             update_stat(interaction.guild.id, "mute_removed", interaction.user.id)
             await send_mod_log(self.bot, interaction.guild, "Unmute", interaction.user, member, "Знято адміністратором")
-            await interaction.response.send_message(f"✅ Таймаут для {member.mention} успішно знято.")
+            await interaction.followup.send(f"✅ Таймаут для {member.mention} успішно знято.")
         except Exception as e:
-            await interaction.response.send_message(f"❌ Не вдалося зняти таймаут: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Не вдалося зняти таймаут: {e}")
 
     @app_commands.command(name="unwarn", description="Видалити конкретне попередження користувача")
     @app_commands.describe(member="Користувач", warn_id="ID варну (#)")
@@ -264,6 +265,7 @@ class Moderation(commands.Cog):
         app_commands.Choice(name="За місяць", value="month")
     ])
     async def stats(self, interaction: discord.Interaction, period: str):
+        await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild.id
         logs = load_logs(guild_id)
         now = datetime.now()
@@ -318,7 +320,7 @@ class Moderation(commands.Cog):
         embed.add_field(name="🗑️ Знято ролей", value=f"**{counts['roles_removed']}**", inline=True)
         
         embed.set_footer(text=f"ID: {interaction.user.id} | Ver: 1.0.1")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="view_stats", description="Переглянути статистику іншого модератора (тільки для керівництва)")
     @app_commands.describe(moderator="Модератор, статистику якого потрібно переглянути", period="Період статистики")
@@ -328,6 +330,7 @@ class Moderation(commands.Cog):
         app_commands.Choice(name="За місяць", value="month")
     ])
     async def view_stats(self, interaction: discord.Interaction, moderator: discord.Member, period: str):
+        await interaction.response.defer(ephemeral=True)
         # Перевірка прав - тільки для керівництва модерації
         allowed_roles = [
             "Головний Модератор (Discord)",
@@ -396,11 +399,12 @@ class Moderation(commands.Cog):
         embed.add_field(name="🗑️ Знято ролей", value=f"**{counts['roles_removed']}**", inline=True)
         
         embed.set_footer(text=f"ID модератора: {moderator.id}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
     @app_commands.command(name="mod_stats_global", description="Переглянути загальну статистику модерації сервера")
     async def global_stats(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         # Використовуємо check_mod_permissions для доступу
         if not await self.check_mod_permissions(interaction, MUTE_ROLES): return
         
@@ -418,7 +422,7 @@ class Moderation(commands.Cog):
         embed.add_field(name="⚠️ Варни (видано/знято)", value=f"**{stats.get('warn_issued', 0)}** / **{stats.get('warn_removed', 0)}**", inline=True)
         embed.add_field(name="🎭 Ролі (видано/знято)", value=f"**{stats.get('roles_issued', 0)}** / **{stats.get('roles_removed', 0)}**", inline=True)
         
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @tasks.loop(minutes=5)
     async def check_bans(self):
