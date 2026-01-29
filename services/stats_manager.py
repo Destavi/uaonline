@@ -4,15 +4,17 @@ from datetime import datetime
 print(f"📊 [StatsManager] Initialized with PostgreSQL backend")
 
 def update_stat(guild_id, action_type, moderator_id=None):
-    print(f"DEBUG: update_stat called with ({guild_id}, {action_type}, {moderator_id})")
     """
     Updates both global server stats and per-moderator stats.
     action_type: e.g. 'ban_issued', 'mute_issued', 'warn_issued', etc.
     """
-    conn = get_conn()
-    cur = conn.cursor()
+    print(f"📊 [StatsManager] Entering update_stat: guild={guild_id}, type={action_type}, mod={moderator_id}")
     
+    conn = None
     try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
         # 1. Update Global Server Stats
         cur.execute("""
             INSERT INTO server_stats (guild_id, stat_key, value) 
@@ -22,8 +24,6 @@ def update_stat(guild_id, action_type, moderator_id=None):
         
         # 2. Update Moderator Personal Stats
         if moderator_id:
-            # Map specific issued/removed actions to generalized stats if needed, 
-            # but here we use the action_type as provided to match the mod_stats schema.
             cur.execute("""
                 INSERT INTO mod_stats (guild_id, user_id, action_type, count)
                 VALUES (%s, %s, %s, 1)
@@ -32,13 +32,17 @@ def update_stat(guild_id, action_type, moderator_id=None):
             """, (guild_id, moderator_id, action_type))
         
         conn.commit()
-        print(f"📈 [StatsManager] Updated '{action_type}' for guild {guild_id}")
-    except Exception as e:
-        conn.rollback()
-        print(f"❌ [StatsManager ERROR] Failed to update stat: {e}")
-    finally:
         cur.close()
-        conn.close()
+        print(f"📈 [StatsManager] Successfully updated '{action_type}' for guild {guild_id}")
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"❌ [StatsManager ERROR] Failed to update stat: {e}")
+        raise e # Re-raise to let the caller know it failed
+    finally:
+        if conn:
+            conn.close()
+
 
 def get_stats(guild_id):
     conn = get_conn()
