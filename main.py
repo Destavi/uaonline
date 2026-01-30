@@ -10,6 +10,7 @@ import asyncio
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import math
 
 # Ініціалізація бази даних
 init_db()
@@ -29,7 +30,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         status_color = "#3ba55c" if bot.is_ready() else "#faa61a"
         status_text = "ОНЛАЙН" if bot.is_ready() else "ПІДКЛЮЧЕННЯ..."
         bot_name = str(bot.user) if bot.user else "Discord Bot"
-        latency = round(bot.latency * 1000) if bot.latency else 0
+        
+        # Перевірка на NaN для latency
+        raw_latency = bot.latency
+        if raw_latency is None or math.isnan(raw_latency):
+            latency = 0
+        else:
+            latency = round(raw_latency * 1000)
 
         html = f"""
         <!DOCTYPE html>
