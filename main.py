@@ -17,34 +17,32 @@ import random
 # Ініціалізація бази даних
 init_db()
 
-# Шлях до файлу з проксі
-PROXY_FILE = "proxyscrape_premium_http_proxies.txt"
+# Пряме підключення без проксі
 current_proxy = None
 
-def get_next_proxy():
-    global current_proxy
+# Функція для отримання публічної IP
+async def get_public_ip():
     try:
-        if os.path.exists(PROXY_FILE):
-            with open(PROXY_FILE, "r") as f:
-                proxies = [line.strip() for line in f if line.strip()]
-            if proxies:
-                p = random.choice(proxies)
-                current_proxy = f"http://{p}"
-                return current_proxy
-    except Exception as e:
-        print(f"⚠️ Помилка завантаження проксі: {e}")
-    current_proxy = None
-    return None
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get('https://api.ipify.org?format=json', timeout=5) as resp:
+                data = await resp.json()
+                return data.get('ip', 'Unknown')
+    except:
+        return 'Unknown'
+
+current_public_ip = "Визначається..."
+last_error = None
 
 intents = discord.Intents.default()
 intents.members = True          
 intents.message_content = True  
 
-# Функція для створення екземпляра бота з проксі
-def create_bot(proxy_url=None):
-    return commands.Bot(command_prefix="!", intents=intents, proxy=proxy_url)
+# Функція для створення екземпляра бота
+def create_bot():
+    return commands.Bot(command_prefix="!", intents=intents)
 
-bot = create_bot(get_next_proxy())
+bot = create_bot()
 
 # Простий HTTP-сервер для Health Check
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -130,6 +128,15 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     margin-top: 15px;
                     word-break: break-all;
                 }}
+                .error-box {{
+                    margin-top: 15px;
+                    color: #f87171;
+                    font-size: 11px;
+                    background: rgba(239, 68, 68, 0.1);
+                    padding: 8px;
+                    border-radius: 8px;
+                    border: 1px solid rgba(239, 68, 68, 0.2);
+                }}
             </style>
         </head>
         <body>
@@ -147,11 +154,15 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         Затримка: <span style="color: #60a5fa;">{latency}ms</span>
                     </div>
                     <div class="stat-item">
+                        Ваша IP: <span style="color: #fbbf24;">{current_public_ip}</span>
+                    </div>
+                    <div class="stat-item">
                         Мережа: <span style="color: #818cf8;">{"Proxy Active" if current_proxy else "Direct Connect"}</span>
                     </div>
                 </div>
+                {f'<div class="error-box">Помилка: {last_error}</div>' if last_error else ''}
                 <div class="proxy-info">
-                    {f"IP: {current_proxy}" if current_proxy else "Запущено без проксі"}
+                    {f"Proxy: {current_proxy}" if current_proxy else "Запущено без проксі"}
                 </div>
             </div>
         </body>
@@ -198,17 +209,23 @@ async def setup():
     await bot.add_cog(AppPublisher(bot))
 
 async def main():
+    global current_public_ip, last_error
+    current_public_ip = await get_public_ip()
     try:
         async with bot:
             await setup()
             await bot.start(TOKEN)
     except discord.errors.HTTPException as e:
+        last_error = f"HTTP {e.status}: {e.text}"
         if e.status == 429:
-            print("❌ КРИТИЧНА ПОМИЛКА: Rate Limited (429). Очікування 60 секунд...")
+            print(f"❌ КРИТИЧНА ПОМИЛКА: Rate Limited (429). Очікування 60 секунд...")
             await asyncio.sleep(60)
             raise e 
         else:
             raise e
+    except Exception as e:
+        last_error = str(e)
+        raise e
 
 if __name__ == "__main__":
     # Запускаємо health check в окремому потоці
@@ -222,15 +239,16 @@ if __name__ == "__main__":
             break
         except discord.errors.HTTPException as e:
             if e.status == 429:
-                print("🔄 Зміна проксі через Rate Limit...")
-                new_proxy = get_next_proxy()
-                bot = create_bot(new_proxy)
+                print("❌ Rate Limited (429) при прямому підключенні. Очікування 5 хвилин...")
+                import time
+                time.sleep(300) 
                 continue
             else:
                 print(f"❌ Помилка HTTP: {e}")
                 import time
-                time.sleep(5)
+                time.sleep(10)
         except Exception as e:
+            last_error = str(e)
             print(f"❌ КРИТИЧНА ПОМИЛКА: {e}")
             import time
             time.sleep(5)
