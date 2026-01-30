@@ -1,10 +1,14 @@
 import sys
 import os
+from dotenv import load_dotenv
 
-# Add the project root and services directory to path
+load_dotenv()
+
+# Add the project root to path
 sys.path.append(os.getcwd())
 
-from services.stats_manager import update_stat, log_mod_action, load_stats, load_logs
+from services.stats_manager import update_stat, log_mod_action, get_stats, load_logs
+from services.database import init_db
 
 class MockUser:
     def __init__(self, id, name):
@@ -16,31 +20,30 @@ def test():
     admin = MockUser(987654321, "AdminTest")
     target = MockUser(111222333, "TargetTest")
     
-    print(f"Current working directory: {os.getcwd()}")
-    
+    print("🐘 Initializing PostgreSQL database...")
+    try:
+        init_db()
+        print("✅ Database initialized.")
+    except Exception as e:
+        print(f"❌ Failed to initialize database: {e}")
+        return
+
     print("Testing update_stat...")
-    update_stat(guild_id, "ban_issued")
-    update_stat(guild_id, "mute_issued")
+    update_stat(guild_id, "ban_issued", admin.id)
+    update_stat(guild_id, "mute_issued", admin.id)
     
     print("Testing log_mod_action...")
     log_mod_action(guild_id, "ban", admin, target, "Test reason")
     log_mod_action(guild_id, "mute", admin, target, "Test reason")
     
-    stats = load_stats()
+    print("Retrieving stats...")
+    stats = get_stats(guild_id)
     logs = load_logs(guild_id)
     
     print(f"Stats: {stats}")
-    print(f"Logs: {logs}")
+    print(f"Last 2 Logs: {logs[:2]}")
     
-    if os.path.exists("stats.json"):
-        print("✅ stats.json exists")
-    else:
-        print("❌ stats.json NOT found")
-        
-    if os.path.exists("mod_logs.json"):
-        print("✅ mod_logs.json exists")
-    else:
-        print("❌ mod_logs.json NOT found")
+    print("\n🏁 Test finished.")
 
 if __name__ == "__main__":
     test()
