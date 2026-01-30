@@ -12,13 +12,39 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import math
 
+import random
+
 # Ініціалізація бази даних
 init_db()
+
+# Шлях до файлу з проксі
+PROXY_FILE = "proxyscrape_premium_http_proxies.txt"
+current_proxy = None
+
+def get_next_proxy():
+    global current_proxy
+    try:
+        if os.path.exists(PROXY_FILE):
+            with open(PROXY_FILE, "r") as f:
+                proxies = [line.strip() for line in f if line.strip()]
+            if proxies:
+                p = random.choice(proxies)
+                current_proxy = f"http://{p}"
+                return current_proxy
+    except Exception as e:
+        print(f"⚠️ Помилка завантаження проксі: {e}")
+    current_proxy = None
+    return None
 
 intents = discord.Intents.default()
 intents.members = True          
 intents.message_content = True  
-bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Функція для створення екземпляра бота з проксі
+def create_bot(proxy_url=None):
+    return commands.Bot(command_prefix="!", intents=intents, proxy=proxy_url)
+
+bot = create_bot(get_next_proxy())
 
 # Простий HTTP-сервер для Health Check
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -63,7 +89,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
                     text-align: center;
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    width: 350px;
+                    width: 380px;
                 }}
                 .status-dot {{
                     height: 12px;
@@ -75,7 +101,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     box-shadow: 0 0 10px {status_color};
                 }}
                 h1 {{ font-size: 24px; margin-bottom: 5px; color: #f8fafc; }}
-                p {{ color: #94a3b8; margin-top: 5px; }}
+                p {{ color: #94a3b8; margin-top: 5px; font-size: 14px; }}
                 .badge {{
                     background: {status_color}22;
                     color: {status_color};
@@ -95,7 +121,14 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     background: rgba(15, 23, 42, 0.5);
                     padding: 10px;
                     border-radius: 10px;
-                    font-size: 14px;
+                    font-size: 13px;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }}
+                .proxy-info {{
+                    color: #64748b;
+                    font-size: 11px;
+                    margin-top: 15px;
+                    word-break: break-all;
                 }}
             </style>
         </head>
@@ -113,6 +146,12 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     <div class="stat-item">
                         Затримка: <span style="color: #60a5fa;">{latency}ms</span>
                     </div>
+                    <div class="stat-item">
+                        Мережа: <span style="color: #818cf8;">{"Proxy Active" if current_proxy else "Direct Connect"}</span>
+                    </div>
+                </div>
+                <div class="proxy-info">
+                    {f"IP: {current_proxy}" if current_proxy else "Запущено без проксі"}
                 </div>
             </div>
         </body>
@@ -134,6 +173,7 @@ async def on_ready():
     print("====================================")
     print(f"✅ Бот ЗАПУЩЕНИЙ як {bot.user}")
     print(f"📡 ID: {bot.user.id}")
+    print(f"🌐 Proxy: {current_proxy if current_proxy else 'Direct'}")
     print("====================================")
 
 @bot.command()
@@ -166,7 +206,7 @@ async def main():
         if e.status == 429:
             print("❌ КРИТИЧНА ПОМИЛКА: Rate Limited (429). Очікування 60 секунд...")
             await asyncio.sleep(60)
-            raise e # Передаємо далі для обробки в циклі
+            raise e 
         else:
             raise e
 
@@ -182,12 +222,14 @@ if __name__ == "__main__":
             break
         except discord.errors.HTTPException as e:
             if e.status == 429:
-                # Вже вивели повідомлення в main, просто продовжуємо цикл
+                print("🔄 Зміна проксі через Rate Limit...")
+                new_proxy = get_next_proxy()
+                bot = create_bot(new_proxy)
                 continue
             else:
                 print(f"❌ Помилка HTTP: {e}")
                 import time
-                time.sleep(5) # Пауза перед рестартом при інших помилках
+                time.sleep(5)
         except Exception as e:
             print(f"❌ КРИТИЧНА ПОМИЛКА: {e}")
             import time
