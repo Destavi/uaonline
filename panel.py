@@ -72,12 +72,21 @@ def update_complaint_status(db_key, status, guild_id=None):
 class ComplaintPanel(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        
+        # Створюємо команди
         self.ctx_menu_player = app_commands.ContextMenu(name="⚠️ Скарга на гравця", callback=ctx_report_player)
         self.ctx_menu_leader = app_commands.ContextMenu(name="⭐ Скарга на Лідера", callback=ctx_report_leader)
         self.ctx_menu_gov = app_commands.ContextMenu(name="🏛 Скарга на Держ.", callback=ctx_report_gov)
-        self.bot.tree.add_command(self.ctx_menu_player)
-        self.bot.tree.add_command(self.ctx_menu_leader)
-        self.bot.tree.add_command(self.ctx_menu_gov)
+        
+        # Додаємо команди тільки якщо їх ще немає в дереві (захист від повторної ініціалізації)
+        existing_commands = {cmd.name for cmd in self.bot.tree.get_commands()}
+        
+        if self.ctx_menu_player.name not in existing_commands:
+            self.bot.tree.add_command(self.ctx_menu_player)
+        if self.ctx_menu_leader.name not in existing_commands:
+            self.bot.tree.add_command(self.ctx_menu_leader)
+        if self.ctx_menu_gov.name not in existing_commands:
+            self.bot.tree.add_command(self.ctx_menu_gov)
 
     @commands.Cog.listener()
     async def on_ready(self):

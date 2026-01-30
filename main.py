@@ -147,15 +147,28 @@ async def sync(ctx):
         await ctx.send(f"❌ Помилка: {e}")
 
 async def setup():
+    # Очищення існуючих когів перед додаванням (для уникнення дублікатів при рестарті)
+    cogs_to_remove = list(bot.cogs.keys())
+    for cog_name in cogs_to_remove:
+        await bot.remove_cog(cog_name)
+    
     await bot.add_cog(ComplaintPanel(bot))
     await bot.add_cog(Moderation(bot))
     await bot.add_cog(RoleRequest(bot))
     await bot.add_cog(AppPublisher(bot))
 
 async def main():
-    async with bot:
-        await setup()
-        await bot.start(TOKEN)
+    try:
+        async with bot:
+            await setup()
+            await bot.start(TOKEN)
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            print("❌ КРИТИЧНА ПОМИЛКА: Rate Limited (429). Очікування 60 секунд...")
+            await asyncio.sleep(60)
+            raise e # Передаємо далі для обробки в циклі
+        else:
+            raise e
 
 if __name__ == "__main__":
     # Запускаємо health check в окремому потоці
@@ -169,13 +182,14 @@ if __name__ == "__main__":
             break
         except discord.errors.HTTPException as e:
             if e.status == 429:
-                print("❌ КРИТИЧНА ПОМИЛКА: Rate Limited (429). Очікування 60 секунд...")
-                import time
-                time.sleep(60)
+                # Вже вивели повідомлення в main, просто продовжуємо цикл
+                continue
             else:
                 print(f"❌ Помилка HTTP: {e}")
-                break
+                import time
+                time.sleep(5) # Пауза перед рестартом при інших помилках
         except Exception as e:
             print(f"❌ КРИТИЧНА ПОМИЛКА: {e}")
-            break
+            import time
+            time.sleep(5)
 
